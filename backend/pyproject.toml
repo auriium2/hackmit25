@@ -12,4 +12,5 @@ dependencies = [
     "pydantic>=2.7.1",
     "ddtrace>=2.3.0",
     "datadog>=0.47.0",
+    "httpx>=0.24.0",
 ]
