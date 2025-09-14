@@ -1,16 +1,26 @@
 import os
 import ray
-from fastapi import FastAPI, HTTPException, Request, Query
+from fastapi import FastAPI, HTTPException, Request, Query, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import asyncio
 from typing import Dict, Any, Optional, List
 import time
 import uuid
+import tempfile
+from pathlib import Path
 
 # Import Datadog libraries for monitoring and profiling
 from ddtrace import patch_all, tracer
 from ddtrace.profiling import Profiler
+
+# Import benchmark extraction components
+from app.workloads.benchmark_extractor import (
+    EnhancedBenchmarkExtractor,
+    BenchmarkExtractionRequest,
+    BenchmarkExtractionResponse,
+    process_benchmark_extraction_batch
+)
 
 # Initialize Datadog tracing and profiling
 patch_all()  # Patch all supported libraries for automatic instrumentation
@@ -520,3 +530,190 @@ if __name__ == "__main__":
         print("Install it with: pip install uvicorn")
         import sys
         sys.exit(1)
+
+
+# Benchmark extraction endpoints
+@app.post("/extract-benchmarks/text", response_model=BenchmarkExtractionResponse)
+async def extract_benchmarks_from_text(request: BenchmarkExtractionRequest):
+    """Extract benchmarks from paper text using LLM."""
+    if not request.paper_text:
+        raise HTTPException(status_code=400, detail="paper_text is required")
+
+    with tracer.trace("api.extract_benchmarks.text", service="hackmit-backend"):
+        tracer.current_span().set_tag("domain_hint", request.domain_hint)
+        tracer.current_span().set_tag("text_length", len(request.paper_text))
+
+        try:
+            # Create extractor actor
+            extractor = EnhancedBenchmarkExtractor.remote(domain=request.domain_hint or "general")
+
+            # Extract benchmarks
+            result = await extractor.extract_benchmarks_from_text.remote(
+                request.paper_text, request.domain_hint
+            )
+
+            # Create response
+            response_data = {
+                "benchmarks": result.get("benchmarks", []),
+                "metric_values": result.get("metric_values", []),
+                "extraction_metadata": result.get("extraction_metadata", {}),
+                "paper_metadata": {
+                    "text_length": len(request.paper_text),
+                    "processing_timestamp": time.time()
+                }
+            }
+
+            if request.extract_full_analysis and result.get("benchmarks"):
+                # Create full paper analysis if requested
+                paper_id = f"text_analysis_{int(time.time())}"
+                extractor_local = await extractor.create_full_paper_analysis.remote(result, paper_id)
+                response_data["paper_analysis"] = extractor_local.model_dump() if extractor_local else None
+
+            return BenchmarkExtractionResponse(**response_data)
+
+        except Exception as e:
+            tracer.current_span().set_tag("error", str(e))
+            raise HTTPException(status_code=500, detail=f"Extraction failed: {str(e)}")
+
+
+@app.post("/extract-benchmarks/pdf")
+async def extract_benchmarks_from_pdf(
+    file: UploadFile = File(...),
+    domain_hint: Optional[str] = None,
+    extract_full_analysis: bool = True
+):
+    """Extract benchmarks from uploaded PDF file."""
+    if not file.filename or not file.filename.endswith('.pdf'):
+        raise HTTPException(status_code=400, detail="Only PDF files are supported")
+
+    with tracer.trace("api.extract_benchmarks.pdf", service="hackmit-backend"):
+        tracer.current_span().set_tag("filename", file.filename)
+        tracer.current_span().set_tag("domain_hint", domain_hint)
+
+        try:
+            # Save uploaded file temporarily
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as temp_file:
+                content = await file.read()
+                temp_file.write(content)
+                temp_file_path = temp_file.name
+
+            try:
+                # Create extractor actor
+                extractor = EnhancedBenchmarkExtractor.remote(domain=domain_hint or "general")
+
+                # Extract benchmarks from PDF
+                result = await extractor.extract_from_pdf.remote(temp_file_path, domain_hint)
+
+                # Create response
+                response_data = {
+                    "benchmarks": result.get("benchmarks", []),
+                    "metric_values": result.get("metric_values", []),
+                    "extraction_metadata": result.get("extraction_metadata", {}),
+                    "paper_metadata": result.get("paper_metadata", {})
+                }
+
+                response_data["paper_metadata"]["original_filename"] = file.filename
+
+                if extract_full_analysis and result.get("benchmarks"):
+                    # Create full paper analysis if requested
+                    paper_id = f"pdf_{Path(file.filename).stem}"
+                    extractor_local = await extractor.create_full_paper_analysis.remote(result, paper_id)
+                    response_data["paper_analysis"] = extractor_local.model_dump() if extractor_local else None
+
+                return BenchmarkExtractionResponse(**response_data)
+
+            finally:
+                # Clean up temporary file
+                os.unlink(temp_file_path)
+
+        except Exception as e:
+            tracer.current_span().set_tag("error", str(e))
+            raise HTTPException(status_code=500, detail=f"PDF extraction failed: {str(e)}")
+
+
+@app.post("/extract-benchmarks/batch")
+async def extract_benchmarks_batch(papers_data: List[Dict[str, Any]], domain_hint: Optional[str] = None):
+    """Process multiple papers for benchmark extraction in parallel."""
+    if not papers_data:
+        raise HTTPException(status_code=400, detail="papers_data cannot be empty")
+
+    with tracer.trace("api.extract_benchmarks.batch", service="hackmit-backend"):
+        tracer.current_span().set_tag("paper_count", len(papers_data))
+        tracer.current_span().set_tag("domain_hint", domain_hint)
+
+        try:
+            # Process papers in parallel using Ray
+            result = await process_benchmark_extraction_batch.remote(
+                papers_data, domain_hint, num_extractors=4
+            )
+
+            return result
+
+        except Exception as e:
+            tracer.current_span().set_tag("error", str(e))
+            raise HTTPException(status_code=500, detail=f"Batch processing failed: {str(e)}")
+
+
+@app.get("/sample-papers")
+async def list_sample_papers():
+    """List available sample papers for testing."""
+    sample_dir = Path("sample_papers")
+    if not sample_dir.exists():
+        return {"papers": [], "message": "Sample papers directory not found"}
+
+    papers = []
+    for pdf_file in sample_dir.glob("*.pdf"):
+        papers.append({
+            "filename": pdf_file.name,
+            "path": str(pdf_file),
+            "size_bytes": pdf_file.stat().st_size
+        })
+
+    return {"papers": papers, "total_count": len(papers)}
+
+
+@app.post("/extract-benchmarks/sample/{filename}")
+async def extract_benchmarks_from_sample(
+    filename: str,
+    domain_hint: Optional[str] = None,
+    extract_full_analysis: bool = True
+):
+    """Extract benchmarks from a sample paper by filename."""
+    sample_path = Path("sample_papers") / filename
+
+    if not sample_path.exists():
+        raise HTTPException(status_code=404, detail=f"Sample paper {filename} not found")
+
+    if not filename.endswith('.pdf'):
+        raise HTTPException(status_code=400, detail="Only PDF files are supported")
+
+    with tracer.trace("api.extract_benchmarks.sample", service="hackmit-backend"):
+        tracer.current_span().set_tag("filename", filename)
+        tracer.current_span().set_tag("domain_hint", domain_hint)
+
+        try:
+            # Create extractor actor
+            extractor = EnhancedBenchmarkExtractor.remote(domain=domain_hint or "general")
+
+            # Extract benchmarks
+            result = await extractor.extract_from_pdf.remote(str(sample_path), domain_hint)
+
+            # Create response
+            response_data = {
+                "benchmarks": result.get("benchmarks", []),
+                "metric_values": result.get("metric_values", []),
+                "extraction_metadata": result.get("extraction_metadata", {}),
+                "paper_metadata": result.get("paper_metadata", {})
+            }
+
+            if extract_full_analysis and result.get("benchmarks"):
+                # Create full paper analysis if requested
+                paper_id = Path(filename).stem
+                extractor_local = await extractor.create_full_paper_analysis.remote(result, paper_id)
+                response_data["paper_analysis"] = extractor_local.model_dump() if extractor_local else None
+
+            return BenchmarkExtractionResponse(**response_data)
+
+        except Exception as e:
+            tracer.current_span().set_tag("error", str(e))
+            raise HTTPException(status_code=500, detail=f"Sample extraction failed: {str(e)}")

@@ -46,7 +46,7 @@ class ResearchQuery(BaseModel):
 
 class SeedPaper(BaseModel):
     """Seed paper for analysis."""
-    arxiv_id: Optional[str] = None
+    openalex_id: Optional[str] = None
     doi: Optional[str] = None
     title: str
     url: Optional[str] = None
@@ -54,7 +54,7 @@ class SeedPaper(BaseModel):
     class Config:
         schema_extra = {
             "example": {
-                "arxiv_id": "2023.12345",
+                "openalex_id": "https://openalex.org/W2023456789",
                 "title": "Advanced Model Predictive Control Techniques"
             }
         }
@@ -68,16 +68,17 @@ class SeedPaperRequest(BaseModel):
 
 class Paper(BaseModel):
     """Paper metadata and information."""
-    arxiv_id: Optional[str] = None
+    openalex_id: str = Field(..., description="OpenAlex work ID (e.g., https://openalex.org/W2023456789)")
     doi: Optional[str] = None
     title: str
     authors: List[str]
     abstract: str
     published_date: str
     venue: Optional[str] = None
-    categories: List[str] = Field(default_factory=list)
+    concepts: List[str] = Field(default_factory=list, description="OpenAlex concept names")
     url: Optional[str] = None
     citation_count: Optional[int] = None
+    open_access: Optional[bool] = Field(None, description="Whether the paper is open access")
 
 
 class Benchmark(BaseModel):

@@ -3,6 +3,7 @@ import json
 import math
 import time
 import logging
+import os
 from typing import List, Dict, Optional
 from dataclasses import dataclass
 from dotenv import load_dotenv
@@ -82,7 +83,7 @@ class OpenAlexClient:
 
 class LLMQueryProcessor:
     def __init__(self, api_key: Optional[str] = None):
-        self.api_key = "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"
+        self.api_key = api_key or os.getenv("CLAUDE_API_KEY")
         if not self.api_key:
             raise ValueError("Claude API key required. Set CLAUDE_API_KEY environment variable.")
 

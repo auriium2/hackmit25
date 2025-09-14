@@ -13,5 +13,10 @@ dependencies = [
     "ddtrace>=2.3.0",
     "datadog>=0.47.0",
     "httpx>=0.24.0",
+    "PyPDF2>=3.0.0",
+    "openai>=1.0.0",
+    "docling>=2.11.0",
+    "pandas>=2.0.0",
+    "anyscale>=0.26.57",
     "dotenv>=0.9.9",
 ]
