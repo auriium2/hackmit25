@@ -4,6 +4,7 @@ import { ArrowLeft, Download, Filter, ExternalLink } from 'lucide-react';
 import { FilterPanel, FilterOptions } from './FilterPanel';
 import { GraphControls } from './GraphControls';
 import { D3ManyBodyForce } from './D3ForceSimulation';
+import { GraphResponse, GraphNode, GraphEdge, apiService, PaperAnalysisResponse, BenchmarkMetrics } from '../services/api';
 
 interface Paper {
   id: string;
@@ -30,9 +31,10 @@ interface Paper {
 interface GraphViewProps {
   searchQuery: string;
   onBack: () => void;
+  graphData?: GraphResponse | null;
 }
 
-export function GraphView({ searchQuery, onBack }: GraphViewProps) {
+export function GraphView({ searchQuery, onBack, graphData }: GraphViewProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [selectedPaper, setSelectedPaper] = useState<Paper | null>(null);
   const [selectedNodes, setSelectedNodes] = useState<string[]>([]);
@@ -42,6 +44,9 @@ export function GraphView({ searchQuery, onBack }: GraphViewProps) {
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [visibleLayers, setVisibleLayers] = useState(['citations', 'collaborations', 'methodology', 'temporal']);
   const animationRef = useRef<number>();
+  const [paperAnalysis, setPaperAnalysis] = useState<PaperAnalysisResponse | null>(null);
+  const [benchmarkMetrics, setBenchmarkMetrics] = useState<BenchmarkMetrics | null>(null);
+  const [loadingAnalysis, setLoadingAnalysis] = useState(false);
   const [isSimulationRunning, setIsSimulationRunning] = useState(true);
   const [simulationComplete, setSimulationComplete] = useState(false);
   const simulationRef = useRef<{ 
@@ -60,6 +65,50 @@ export function GraphView({ searchQuery, onBack }: GraphViewProps) {
   
   const d3ForceRef = useRef<D3ManyBodyForce>(new D3ManyBodyForce());
 
+  // Convert backend graph nodes to Paper format
+  const convertBackendNodesToPapers = (nodes: GraphNode[], edges: GraphEdge[]): Paper[] => {
+    const papers: Paper[] = [];
+    const edgeMap = new Map<string, string[]>();
+
+    // Build edge connections map
+    edges.forEach(edge => {
+      if (!edgeMap.has(edge.source)) edgeMap.set(edge.source, []);
+      if (!edgeMap.has(edge.target)) edgeMap.set(edge.target, []);
+      edgeMap.get(edge.source)?.push(edge.target);
+      edgeMap.get(edge.target)?.push(edge.source);
+    });
+
+    // Convert nodes to papers
+    nodes.forEach((node, i) => {
+      const angle = (i / nodes.length) * 2 * Math.PI;
+      const radius = 300 + Math.random() * 300;
+      const centerX = 600;
+      const centerY = 450;
+
+      papers.push({
+        id: node.id,
+        title: node.data.title,
+        authors: node.data.authors,
+        year: node.data.year,
+        citations: node.data.citations,
+        x: centerX + Math.cos(angle) * radius + (Math.random() - 0.5) * 200,
+        y: centerY + Math.sin(angle) * radius + (Math.random() - 0.5) * 200,
+        vx: 0,
+        vy: 0,
+        connections: edgeMap.get(node.id) || [],
+        accuracy: node.data.confidence || 85,
+        relevanceToSeed: Math.random() * 0.3 + 0.7,
+        trustScore: node.data.confidence || 85,
+        benchmark: 'Accuracy',
+        methodology: [node.data.cluster.toLowerCase().replace(/\s+/g, '-')],
+        url: node.data.doi ? `https://doi.org/${node.data.doi}` : undefined,
+        summary: node.data.summary,
+      });
+    });
+
+    return papers;
+  };
+
   const [filters, setFilters] = useState<FilterOptions>({
     dateRange: [2000, 2025],
     trustScore: 0, // Single value defaulting to 0% (show all papers)
@@ -70,8 +119,14 @@ export function GraphView({ searchQuery, onBack }: GraphViewProps) {
     visibleLayers: ['citations', 'collaborations', 'methodology', 'temporal'],
   });
 
-  // Enhanced paper data with better titles and summaries
+  // Convert backend graph data to papers if available, otherwise use mock data
   const [papers] = useState<Paper[]>(() => {
+    if (graphData && graphData.graph.nodes.length > 0) {
+      // Convert backend graph nodes to Paper format
+      return convertBackendNodesToPapers(graphData.graph.nodes, graphData.graph.edges);
+    }
+
+    // Fallback to mock data
     const researchTopics = [
       {
         title: "Transformer Architectures for Language Understanding",
@@ -338,6 +393,46 @@ export function GraphView({ searchQuery, onBack }: GraphViewProps) {
 
     simulation.alpha *= (1 - simulation.alphaDecay);
   }, [filteredPapers, getFilteredConnections, calculateCitationStrength]);
+
+  // Fetch paper analysis when a paper is selected
+  useEffect(() => {
+    const fetchPaperAnalysis = async () => {
+      if (!selectedPaper || !graphData) {
+        setPaperAnalysis(null);
+        setBenchmarkMetrics(null);
+        return;
+      }
+
+      setLoadingAnalysis(true);
+      try {
+        // Check if backend is available
+        const isHealthy = await apiService.checkHealth();
+
+        if (isHealthy) {
+          // Fetch both paper analysis and benchmark metrics
+          const [analysis, metrics] = await Promise.all([
+            apiService.getPaperAnalysis(selectedPaper.id).catch(() => null),
+            apiService.getBenchmarkMetrics(selectedPaper.id).catch(() => null)
+          ]);
+
+          setPaperAnalysis(analysis);
+          setBenchmarkMetrics(metrics);
+        } else {
+          // Fallback to null when backend not available
+          setPaperAnalysis(null);
+          setBenchmarkMetrics(null);
+        }
+      } catch (error) {
+        console.error('Failed to fetch paper analysis:', error);
+        setPaperAnalysis(null);
+        setBenchmarkMetrics(null);
+      } finally {
+        setLoadingAnalysis(false);
+      }
+    };
+
+    fetchPaperAnalysis();
+  }, [selectedPaper, graphData]);
 
   const drawGraph = useCallback(() => {
     const canvas = canvasRef.current;
@@ -738,6 +833,15 @@ export function GraphView({ searchQuery, onBack }: GraphViewProps) {
           <span className="text-cyan-100/70">Research Graph for: </span>
           <span className="text-cyan-100 font-medium">"{searchQuery}"</span>
           <span className="text-cyan-400 text-sm">({filteredPapers.length} papers)</span>
+          {graphData ? (
+            <span className="text-green-400 text-xs px-2 py-1 bg-green-500/20 rounded">
+              Live Data
+            </span>
+          ) : (
+            <span className="text-yellow-400 text-xs px-2 py-1 bg-yellow-500/20 rounded">
+              Demo Mode
+            </span>
+          )}
         </div>
 
         <div className="flex items-center space-x-2">
@@ -816,7 +920,12 @@ export function GraphView({ searchQuery, onBack }: GraphViewProps) {
           >
             {selectedPaper ? (
               <div className="space-y-6">
-                <h3 className="text-white mb-4">Paper Analysis</h3>
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-white">Paper Analysis</h3>
+                  {loadingAnalysis && (
+                    <div className="text-cyan-400 text-sm">Loading...</div>
+                  )}
+                </div>
                 
                 {/* Paper Title and Link */}
                 <div>
@@ -837,29 +946,92 @@ export function GraphView({ searchQuery, onBack }: GraphViewProps) {
                   </p>
                 </div>
 
-                {/* Summary Section */}
-                {selectedPaper.summary && (
+                {/* Enhanced Summary with Analysis */}
+                {(paperAnalysis?.openalex_data?.abstract || selectedPaper.summary) && (
                   <div>
-                    <h5 className="text-white/90 text-sm mb-2">Summary</h5>
+                    <h5 className="text-white/90 text-sm mb-2">Abstract</h5>
                     <p className="text-white/70 text-sm leading-relaxed bg-white/5 p-3 rounded-lg">
-                      {selectedPaper.summary}
+                      {paperAnalysis?.openalex_data?.abstract || selectedPaper.summary}
                     </p>
                   </div>
                 )}
 
-                {/* Metrics Grid */}
+                {/* Key Contributions */}
+                {paperAnalysis?.analysis_summary?.key_contributions && (
+                  <div>
+                    <h5 className="text-white/90 text-sm mb-2">Key Contributions</h5>
+                    <div className="space-y-1">
+                      {paperAnalysis.analysis_summary.key_contributions.map((contribution, i) => (
+                        <div key={i} className="text-white/70 text-xs bg-white/5 px-2 py-1 rounded">
+                          • {contribution}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Benchmark Metrics */}
+                {benchmarkMetrics && (
+                  <div>
+                    <h5 className="text-white/90 text-sm mb-2">Benchmark Metrics</h5>
+                    <div className="grid grid-cols-2 gap-2">
+                      {benchmarkMetrics.accuracy && (
+                        <div className="p-2 bg-white/5 rounded-lg">
+                          <div className="text-green-400 font-medium text-sm">{benchmarkMetrics.accuracy}%</div>
+                          <div className="text-white/70 text-xs">Accuracy</div>
+                        </div>
+                      )}
+                      {benchmarkMetrics.f1_score && (
+                        <div className="p-2 bg-white/5 rounded-lg">
+                          <div className="text-blue-400 font-medium text-sm">{benchmarkMetrics.f1_score}</div>
+                          <div className="text-white/70 text-xs">F1 Score</div>
+                        </div>
+                      )}
+                      {benchmarkMetrics.bleu_score && (
+                        <div className="p-2 bg-white/5 rounded-lg">
+                          <div className="text-purple-400 font-medium text-sm">{benchmarkMetrics.bleu_score}</div>
+                          <div className="text-white/70 text-xs">BLEU Score</div>
+                        </div>
+                      )}
+                      {benchmarkMetrics.inference_time && (
+                        <div className="p-2 bg-white/5 rounded-lg">
+                          <div className="text-cyan-400 font-medium text-sm">{benchmarkMetrics.inference_time}s</div>
+                          <div className="text-white/70 text-xs">Inference Time</div>
+                        </div>
+                      )}
+                    </div>
+                    {benchmarkMetrics.dataset && (
+                      <div className="mt-2 p-2 bg-white/5 rounded-lg">
+                        <div className="text-white/70 text-xs">
+                          <span className="text-white/90">Dataset:</span> {benchmarkMetrics.dataset}
+                        </div>
+                        {benchmarkMetrics.benchmark_suite && (
+                          <div className="text-white/70 text-xs">
+                            <span className="text-white/90">Suite:</span> {benchmarkMetrics.benchmark_suite}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Traditional Metrics Grid */}
                 <div className="grid grid-cols-2 gap-3">
                   <div className="p-3 bg-white/5 rounded-lg">
                     <div className="text-white font-medium">{Math.floor(selectedPaper.citations).toLocaleString()}</div>
                     <div className="text-white/70 text-xs">Citations</div>
                   </div>
                   <div className="p-3 bg-white/5 rounded-lg">
-                    <div className="text-green-400 font-medium">{Math.floor(selectedPaper.trustScore || 0)}%</div>
-                    <div className="text-white/70 text-xs">Performance Score</div>
+                    <div className="text-orange-400 font-medium">
+                      {paperAnalysis?.analysis_summary?.impact_score?.toFixed(1) || Math.floor(selectedPaper.trustScore || 0) + '%'}
+                    </div>
+                    <div className="text-white/70 text-xs">Impact Score</div>
                   </div>
                   <div className="p-3 bg-white/5 rounded-lg">
-                    <div className="text-blue-400 font-medium">{selectedPaper.accuracy?.toFixed(1)}%</div>
-                    <div className="text-white/70 text-xs">Accuracy</div>
+                    <div className="text-green-400 font-medium">
+                      {paperAnalysis?.analysis_summary?.relevance_score?.toFixed(1) || selectedPaper.accuracy?.toFixed(1) + '%'}
+                    </div>
+                    <div className="text-white/70 text-xs">Relevance Score</div>
                   </div>
                   <div className="p-3 bg-white/5 rounded-lg">
                     <div className="text-purple-400 font-medium">{2025 - selectedPaper.year}y</div>

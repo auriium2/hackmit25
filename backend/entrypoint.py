@@ -15,12 +15,12 @@ from ddtrace import patch_all, tracer
 from ddtrace.profiling import Profiler
 
 # Import benchmark extraction components
-from app.workloads.benchmark_extractor import (
-    EnhancedBenchmarkExtractor,
-    BenchmarkExtractionRequest,
-    BenchmarkExtractionResponse,
-    process_benchmark_extraction_batch
-)
+# from app.workloads.benchmark_extractor import (
+#     EnhancedBenchmarkExtractor,
+#     BenchmarkExtractionRequest,
+#     BenchmarkExtractionResponse,
+#     process_benchmark_extraction_batch
+# )
 
 # Initialize Datadog tracing and profiling
 patch_all()  # Patch all supported libraries for automatic instrumentation
