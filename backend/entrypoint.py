@@ -1,11 +1,12 @@
 import os
 import ray
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import asyncio
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 import time
+import uuid
 
 # Import Datadog libraries for monitoring and profiling
 from ddtrace import patch_all, tracer
@@ -20,11 +21,22 @@ profiler = Profiler(
 )
 profiler.start()
 
-# Initialize Ray
-ray.init(address=os.environ.get("RAY_ADDRESS", "auto"), namespace="backend")
+# Initialize Ray (will be done lazily when needed)
+_ray_initialized = False
+
+def ensure_ray_initialized():
+    global _ray_initialized
+    if not _ray_initialized:
+        ray.init(address=os.environ.get("RAY_ADDRESS", "auto"), namespace="backend")
+        _ray_initialized = True
+
+# Import workloads for paper processing
+from app.workloads.front_agent import SeedPaperRetriever
+from app.workloads.crawler import search_openalex_papers, build_citation_graph, PaperCrawler
+from app.workloads.llm_processor import process_papers_parallel, generate_research_insights, vectorize_papers
 
 # Create FastAPI app
-app = FastAPI(title="HackMIT 2025 Backend", version="0.1.0")
+app = FastAPI(title="RefGraph API", version="0.1.0")
 
 # Add CORS middleware
 app.add_middleware(
@@ -63,7 +75,38 @@ async def add_timing_and_metrics(request: Request, call_next):
         
         return response
 
-# Define data models
+# Mock in-memory store for task state (use Redis in production)
+tasks: Dict[str, Dict] = {}
+
+# ----------- MODELS -----------
+
+class QueryRequest(BaseModel):
+    query: str
+
+class QueryResponse(BaseModel):
+    systemid: str
+    status: str
+
+class StatusResponse(BaseModel):
+    systemid: str
+    status: str
+
+class GraphResponse(BaseModel):
+    systemid: str
+    graph: Dict
+
+class PaperDetailsResponse(BaseModel):
+    openalex_id: str
+    title: str
+    abstract: Optional[str]
+    year: Optional[int]
+    citations: Optional[int]
+    doi: Optional[str]
+    url: Optional[str]
+    authors: Optional[List[str]] = []
+    venue: Optional[str] = None
+
+# Legacy Item model for existing endpoints
 class Item(BaseModel):
     id: Optional[int] = None
     name: str
@@ -94,34 +137,287 @@ def process_item(item: Dict[str, Any]) -> Dict[str, Any]:
         
         return result
 
-# API routes
+# ----------- REFGRAPH API ENDPOINTS -----------
+
 @app.get("/")
 async def root():
     """Root endpoint to check if the API is running"""
-    return {"message": "HackMIT 2025 Backend API is running"}
+    return {"message": "RefGraph API is running", "version": "0.1.0"}
+
+@app.post("/query", response_model=QueryResponse)
+async def query_papers(req: QueryRequest):
+    """
+    Takes in initial user string, initializes a backend job,
+    returns systemid and ok/fail.
+    """
+    with tracer.trace("api.query_papers", service="refgraph-api"):
+        tracer.current_span().set_tag("query", req.query)
+
+        if not req.query.strip():
+            return {"systemid": "", "status": "fail"}
+
+        systemid = str(uuid.uuid4())
+        tasks[systemid] = {
+            "status": "started",
+            "graph": None,
+            "query": req.query,
+            "start_time": time.time()
+        }
+
+        # Start background processing with your Ray workloads
+        asyncio.create_task(process_research_query(systemid, req.query))
+
+        tracer.current_span().set_tag("systemid", systemid)
+        return {"systemid": systemid, "status": "ok"}
+
+@app.get("/check_status", response_model=StatusResponse)
+async def check_status(systemid: str = Query(...)):
+    """
+    Checks the current status of a job by systemid.
+    """
+    with tracer.trace("api.check_status", service="refgraph-api"):
+        tracer.current_span().set_tag("systemid", systemid)
+
+        if systemid not in tasks:
+            return {"systemid": systemid, "status": "fail"}
+
+        return {"systemid": systemid, "status": tasks[systemid]["status"]}
+
+@app.get("/pull_final_graph", response_model=GraphResponse)
+async def pull_final_graph(systemid: str = Query(...)):
+    """
+    Returns the final graph once processing is complete.
+    """
+    with tracer.trace("api.pull_final_graph", service="refgraph-api"):
+        tracer.current_span().set_tag("systemid", systemid)
+
+        if systemid not in tasks:
+            return {"systemid": systemid, "graph": {}}
+
+        job = tasks[systemid]
+        if job["status"] != "done":
+            return {"systemid": systemid, "graph": {}}
+
+        return {"systemid": systemid, "graph": job["graph"]}
+
+# ----------- BACKGROUND PROCESSING -----------
+
+async def process_research_query(systemid: str, query: str):
+    """
+    Real backend processing using your Ray workloads.
+    Replaces the mock simulate_processing function.
+    """
+    try:
+        with tracer.trace("api.process_research_query", service="refgraph-api"):
+            tracer.current_span().set_tag("systemid", systemid)
+            tracer.current_span().set_tag("query", query)
+
+            # Ensure Ray is initialized
+            ensure_ray_initialized()
+
+            # Step 1: Get seed papers using front agent
+            tasks[systemid]["status"] = "finding seed papers"
+            seed_retriever = SeedPaperRetriever()
+            seed_papers = await asyncio.to_thread(
+                seed_retriever.retrieve_seed_papers, query
+            )
+
+            if not seed_papers:
+                tasks[systemid]["status"] = "fail: no seed papers found"
+                return
+
+            # Step 2: Build citation graph
+            tasks[systemid]["status"] = "building citation graph"
+            graph_result = await asyncio.to_thread(
+                lambda: ray.get(build_citation_graph.remote(seed_papers, max_radius=2))
+            )
+
+            # Step 3: Process papers with domain experts
+            tasks[systemid]["status"] = "analyzing papers with AI agents"
+            papers_for_analysis = []
+            for paper_id, paper_info in graph_result["nodes"].items():
+                papers_for_analysis.append({
+                    "arxiv_id": paper_id,
+                    "title": paper_info.get("title", ""),
+                    "abstract": paper_info.get("abstract", ""),
+                    "authors": paper_info.get("authors", []),
+                    "venue": paper_info.get("venue", "")
+                })
+
+            analysis_result = await asyncio.to_thread(
+                lambda: ray.get(process_papers_parallel.remote(papers_for_analysis, num_agents=4))
+            )
+
+            # Step 4: Generate insights and vectorize
+            tasks[systemid]["status"] = "generating insights"
+            insights, vectors = await asyncio.gather(
+                asyncio.to_thread(
+                    lambda: ray.get(generate_research_insights.remote(analysis_result, query))
+                ),
+                asyncio.to_thread(
+                    lambda: ray.get(vectorize_papers.remote(analysis_result))
+                )
+            )
+
+            # Step 5: Build final graph structure
+            tasks[systemid]["status"] = "finalizing graph"
+
+            # Create nodes with enhanced data
+            nodes = []
+            for paper_id, paper_info in graph_result["nodes"].items():
+                analysis = analysis_result["papers"].get(paper_id, {})
+
+                # Extract year from publication date
+                year = 2023
+                if paper_info.get("published_date") and paper_info["published_date"] != "Unknown":
+                    try:
+                        year = int(paper_info["published_date"][:4])
+                    except:
+                        year = 2023
+
+                node = {
+                    "id": paper_id,
+                    "label": paper_info.get("title", "Unknown Title"),
+                    "data": {
+                        "id": paper_id,
+                        "title": paper_info.get("title", "Unknown Title"),
+                        "authors": paper_info.get("authors", []),
+                        "year": year,
+                        "abstract": str(paper_info.get("abstract", "")),
+                        "doi": paper_info.get("doi"),
+                        "venue": paper_info.get("venue"),
+                        "citations": paper_info.get("citation_count", 0),
+                        "cluster": analysis.get("domain", "Computer Science"),
+                        "confidence": 85.0,
+                        "summary": analysis.get("summary", ""),
+                        "metrics": analysis.get("metrics", {}),
+                        "embedding": vectors["vectors"].get(paper_id, [])
+                    }
+                }
+                nodes.append(node)
+
+            # Create edges from graph result
+            edges = []
+            for edge in graph_result["edges"]:
+                edges.append({
+                    "id": f"{edge['type']}-{edge['from']}-{edge['to']}",
+                    "source": edge["from"],
+                    "target": edge["to"],
+                    "type": edge["type"],
+                    "data": {
+                        "relation": edge["type"],
+                        "confidence": 0.8
+                    }
+                })
+
+            # Final graph structure
+            final_graph = {
+                "nodes": nodes,
+                "edges": edges,
+                "metadata": {
+                    "query": query,
+                    "total_papers": len(nodes),
+                    "processing_time": time.time() - tasks[systemid]["start_time"],
+                    "insights": insights,
+                    "seed_papers": seed_papers
+                }
+            }
+
+            # Mark as complete
+            tasks[systemid]["status"] = "done"
+            tasks[systemid]["graph"] = final_graph
+
+            tracer.current_span().set_tag("papers_processed", len(nodes))
+            tracer.current_span().set_tag("edges_created", len(edges))
+
+    except Exception as e:
+        tracer.current_span().set_tag("error", str(e))
+        tasks[systemid]["status"] = f"fail: {str(e)}"
+
+@app.get("/get_details", response_model=PaperDetailsResponse)
+async def get_details(openalexid: str = Query(...)):
+    """
+    Fetches OpenAlex paper details for a given paper node.
+    """
+    with tracer.trace("api.get_details", service="refgraph-api"):
+        tracer.current_span().set_tag("openalex_id", openalexid)
+
+        try:
+            # Ensure Ray is initialized
+            ensure_ray_initialized()
+
+            # Use Ray to search for paper details
+            papers = await asyncio.to_thread(
+                lambda: ray.get(search_openalex_papers.remote(openalexid))
+            )
+
+            if not papers:
+                return PaperDetailsResponse(
+                    openalex_id=openalexid,
+                    title="Paper not found",
+                    abstract="Unable to retrieve paper details",
+                    year=None,
+                    citations=None,
+                    doi=None,
+                    url=None
+                )
+
+            paper = papers[0]
+
+            # Extract year from publication date
+            year = None
+            if paper.get("published_date") and paper["published_date"] != "Unknown":
+                try:
+                    year = int(paper["published_date"][:4])
+                except:
+                    year = None
+
+            return PaperDetailsResponse(
+                openalex_id=paper["openalex_id"],
+                title=paper["title"],
+                abstract=paper["abstract"] or "No abstract available",
+                year=year,
+                citations=paper["citation_count"],
+                doi=paper["doi"],
+                url=f"https://openalex.org/{paper['openalex_id']}",
+                authors=paper["authors"],
+                venue=paper["venue"] if paper["venue"] != "Unknown Venue" else None
+            )
+
+        except Exception as e:
+            tracer.current_span().set_tag("error", str(e))
+            return PaperDetailsResponse(
+                openalex_id=openalexid,
+                title="Error retrieving paper",
+                abstract=f"Error: {str(e)}",
+                year=None,
+                citations=None,
+                doi=None,
+                url=None
+            )
+
+# ----------- LEGACY ENDPOINTS -----------
 
 @app.post("/items/", response_model=Item)
 async def create_item(item: Item):
-    """Create a new item and process it with Ray"""
+    """Legacy endpoint - Create a new item and process it with Ray"""
     # If no id is provided, assign a random one (in a real app, use a database)
     if item.id is None:
         import random
         item.id = random.randint(1, 10000)
-    
+
     # Process the item using Ray
     with tracer.trace("api.create_item.process", service="hackmit-backend"):
         item_dict = item.model_dump()
         tracer.current_span().set_tag("item.name", item.name)
         result = await asyncio.to_thread(lambda: ray.get(process_item.remote(item_dict)))
-    
+
     # Convert back to Item model
     return Item(**result)
 
 @app.get("/items/{item_id}", response_model=Item)
 async def read_item(item_id: int):
-    """Placeholder for reading an item (would use a database in a real app)"""
-    # In a real application, this would fetch from a database
-    # For demo purposes, just return a dummy item
+    """Legacy endpoint - Placeholder for reading an item"""
     return Item(
         id=item_id,
         name=f"Example Item {item_id}",
