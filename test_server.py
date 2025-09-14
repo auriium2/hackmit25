@@ -1,19 +1,211 @@
 #!/usr/bin/env python3
 """
 Python test server to verify API integration.
-Equivalent functionality to the Node.js test-server.js
+Equivalent functionality to the Node.js test-server.js with front_agent integration.
 """
 
 import json
 import random
 import time
 import threading
-from datetime import datetime
+import sys
+import os
+import uuid
+from datetime import datetime, timedelta
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from urllib.parse import urlparse, parse_qs
 
+# Add the backend directory to Python path so we can import front_agent
+sys.path.insert(0, '/Users/arjuncaputo/hackmit25/backend/app/workloads')
+
+# Import both real and test front_agent
+try:
+    # Load environment variables first
+    import os
+    from dotenv import load_dotenv
+    load_dotenv()
+
+    # Try to import the real front agent first
+    from front_agent import SeedPaperRetriever
+    REAL_FRONT_AGENT_AVAILABLE = True
+    print("🎯 Real front agent with Claude LLM integration enabled")
+except ImportError as e:
+    print(f"⚠️  Real front agent not available: {e}")
+    REAL_FRONT_AGENT_AVAILABLE = False
+
+    # Fallback to test version
+    try:
+        from test_front_agent import TestSeedPaperRetriever
+        FRONT_AGENT_AVAILABLE = True
+        print("🔬 Test front agent integration enabled")
+    except ImportError as e:
+        print(f"⚠️  No front agent available: {e}")
+        FRONT_AGENT_AVAILABLE = False
+
 # Track processing jobs
 jobs = {}
+
+# Session Management System
+class SessionManager:
+    """Manages API sessions with queryIDs, user tracking, and session persistence."""
+
+    def __init__(self):
+        self.sessions = {}  # queryID -> session_data
+        self.user_sessions = {}  # user_id -> [queryIDs]
+        self.session_timeout = timedelta(hours=24)  # 24 hour session timeout
+
+    def create_session(self, user_id=None):
+        """Create a new session with unique queryID."""
+        query_id = str(uuid.uuid4())
+        timestamp = datetime.now()
+
+        session_data = {
+            'queryID': query_id,
+            'user_id': user_id or 'anonymous',
+            'created_at': timestamp,
+            'last_accessed': timestamp,
+            'query_text': None,
+            'seed_papers': [],
+            'processing_status': 'created',
+            'metrics': {},
+            'graph_data': None,
+            'papers_analyzed': [],
+            'benchmarks': [],
+            'analysis_results': {},
+            'session_active': True
+        }
+
+        self.sessions[query_id] = session_data
+
+        # Track user sessions
+        if user_id:
+            if user_id not in self.user_sessions:
+                self.user_sessions[user_id] = []
+            self.user_sessions[user_id].append(query_id)
+
+        print(f"🔑 SESSION: Created new session {query_id} for user {user_id or 'anonymous'}")
+        return query_id
+
+    def get_session(self, query_id):
+        """Get session data by queryID."""
+        if query_id not in self.sessions:
+            return None
+
+        session = self.sessions[query_id]
+
+        # Check if session has expired
+        if datetime.now() - session['last_accessed'] > self.session_timeout:
+            self.expire_session(query_id)
+            return None
+
+        # Update last accessed time
+        session['last_accessed'] = datetime.now()
+        return session
+
+    def update_session(self, query_id, **kwargs):
+        """Update session data."""
+        if query_id in self.sessions:
+            self.sessions[query_id].update(kwargs)
+            self.sessions[query_id]['last_accessed'] = datetime.now()
+            return True
+        return False
+
+    def expire_session(self, query_id):
+        """Expire and clean up a session."""
+        if query_id in self.sessions:
+            session = self.sessions[query_id]
+            user_id = session.get('user_id')
+
+            # Remove from user sessions
+            if user_id and user_id in self.user_sessions:
+                if query_id in self.user_sessions[user_id]:
+                    self.user_sessions[user_id].remove(query_id)
+                if not self.user_sessions[user_id]:
+                    del self.user_sessions[user_id]
+
+            # Remove session
+            del self.sessions[query_id]
+            print(f"⏰ SESSION: Expired session {query_id}")
+            return True
+        return False
+
+    def get_user_sessions(self, user_id):
+        """Get all active sessions for a user."""
+        if user_id not in self.user_sessions:
+            return []
+
+        active_sessions = []
+        for query_id in self.user_sessions[user_id][:]:  # Copy to avoid modification during iteration
+            session = self.get_session(query_id)
+            if session:
+                active_sessions.append(session)
+
+        return active_sessions
+
+    def cleanup_expired_sessions(self):
+        """Clean up expired sessions."""
+        now = datetime.now()
+        expired = []
+
+        for query_id, session in self.sessions.items():
+            if now - session['last_accessed'] > self.session_timeout:
+                expired.append(query_id)
+
+        for query_id in expired:
+            self.expire_session(query_id)
+
+        if expired:
+            print(f"🧹 SESSION: Cleaned up {len(expired)} expired sessions")
+
+        return len(expired)
+
+    def get_session_stats(self):
+        """Get session statistics."""
+        total_sessions = len(self.sessions)
+        active_users = len(self.user_sessions)
+
+        # Session ages
+        now = datetime.now()
+        session_ages = []
+        for session in self.sessions.values():
+            age = (now - session['created_at']).total_seconds() / 3600  # hours
+            session_ages.append(age)
+
+        stats = {
+            'total_active_sessions': total_sessions,
+            'unique_users': active_users,
+            'average_session_age_hours': sum(session_ages) / len(session_ages) if session_ages else 0,
+            'oldest_session_hours': max(session_ages) if session_ages else 0,
+            'newest_session_hours': min(session_ages) if session_ages else 0
+        }
+
+        return stats
+
+# Initialize session manager
+session_manager = SessionManager()
+
+# Start background thread for session cleanup
+def session_cleanup_worker():
+    """Background worker to clean up expired sessions."""
+    while True:
+        time.sleep(3600)  # Run every hour
+        session_manager.cleanup_expired_sessions()
+
+cleanup_thread = threading.Thread(target=session_cleanup_worker, daemon=True)
+cleanup_thread.start()
+
+# Initialize front agent retriever if available (prefer real over test)
+if REAL_FRONT_AGENT_AVAILABLE:
+    retriever = SeedPaperRetriever(email="hackmit2025@example.com")
+    USING_REAL_LLM = True
+    print("🚀 Using REAL Claude LLM for concept extraction")
+elif FRONT_AGENT_AVAILABLE:
+    retriever = TestSeedPaperRetriever(email="hackmit2025@example.com")
+    USING_REAL_LLM = False
+    print("🔬 Using MOCK LLM for concept extraction")
+else:
+    retriever = None
+    USING_REAL_LLM = False
 
 class CORSHandler(BaseHTTPRequestHandler):
     def _set_cors_headers(self):
@@ -46,6 +238,12 @@ class CORSHandler(BaseHTTPRequestHandler):
             self._handle_analyze_paper(query_params)
         elif path == '/get_benchmarks':
             self._handle_get_benchmarks(query_params)
+        elif path == '/session':
+            self._handle_get_session(query_params)
+        elif path == '/sessions':
+            self._handle_get_user_sessions(query_params)
+        elif path == '/session/stats':
+            self._handle_session_stats()
         else:
             self._send_404()
 
@@ -56,6 +254,12 @@ class CORSHandler(BaseHTTPRequestHandler):
 
         if path == '/query':
             self._handle_query()
+        elif path == '/session/create':
+            self._handle_create_session()
+        elif path == '/session/update':
+            self._handle_update_session()
+        elif path == '/session/expire':
+            self._handle_expire_session()
         else:
             self._send_404()
 
@@ -65,23 +269,71 @@ class CORSHandler(BaseHTTPRequestHandler):
         self._send_json_response(200, response_data)
 
     def _handle_query(self):
-        """Handle query submission"""
+        """Handle query submission with session management"""
         content_length = int(self.headers['Content-Length'])
         post_data = self.rfile.read(content_length)
 
         try:
             data = json.loads(post_data.decode('utf-8'))
             query = data.get('query', '')
+            user_id = data.get('user_id')  # Optional user ID
+            query_id = data.get('queryID')  # Optional existing queryID
+
+            # Create new session or use existing one
+            if query_id:
+                session = session_manager.get_session(query_id)
+                if not session:
+                    # Session expired or invalid, create new one
+                    query_id = session_manager.create_session(user_id)
+                    session = session_manager.get_session(query_id)
+                else:
+                    print(f'🔄 USING EXISTING SESSION: {query_id}')
+            else:
+                query_id = session_manager.create_session(user_id)
+                session = session_manager.get_session(query_id)
+
+            # Legacy systemid for backwards compatibility
             systemid = f'test-{int(time.time() * 1000)}'
 
-            print(f'🎯 LIVE BACKEND: Query processed: {query} | System ID: {systemid} | STATUS: ACTIVE!')
+            print(f'🎯 LIVE BACKEND: Query processed: {query} | QueryID: {query_id} | SystemID: {systemid} | STATUS: ACTIVE!')
+
+            # Update session with query details
+            session_manager.update_session(query_id,
+                query_text=query,
+                processing_status='processing',
+                systemid=systemid  # For backwards compatibility
+            )
+
+            # Trigger front_agent to find seed papers
+            seed_papers = []
+            if (REAL_FRONT_AGENT_AVAILABLE or FRONT_AGENT_AVAILABLE) and retriever:
+                try:
+                    llm_type = "REAL Claude LLM" if USING_REAL_LLM else "MOCK LLM"
+                    print(f'🔬 FRONT AGENT ({llm_type}): Starting seed paper retrieval for: {query}')
+                    seed_dois = retriever.retrieve_seed_papers(query)
+                    seed_papers = seed_dois
+                    print(f'✅ FRONT AGENT ({llm_type}): Found {len(seed_papers)} seed papers')
+                    for i, doi in enumerate(seed_papers, 1):
+                        print(f'   📄 Seed {i}: {doi}')
+
+                    # Update session with seed papers
+                    session_manager.update_session(query_id, seed_papers=seed_papers)
+
+                except Exception as e:
+                    print(f'❌ FRONT AGENT ERROR: {e}')
+                    seed_papers = []
+            else:
+                print('⚠️  FRONT AGENT: Not available, using fallback')
+                seed_papers = []
 
             # Start processing simulation in background
-            start_processing_simulation(systemid, query)
+            start_processing_simulation(systemid, query, seed_papers, query_id)
 
             response_data = {
-                'systemid': systemid,
-                'status': 'ok'
+                'queryID': query_id,
+                'systemid': systemid,  # For backwards compatibility
+                'status': 'ok',
+                'seed_papers_count': len(seed_papers)
             }
             self._send_json_response(200, response_data)
 
@@ -308,6 +560,150 @@ class CORSHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(b'Not found')
 
+    # Session Management Endpoints
+    def _handle_create_session(self):
+        """Create new session endpoint"""
+        content_length = int(self.headers['Content-Length'])
+        post_data = self.rfile.read(content_length)
+
+        try:
+            data = json.loads(post_data.decode('utf-8'))
+            user_id = data.get('user_id')
+
+            query_id = session_manager.create_session(user_id)
+            session = session_manager.get_session(query_id)
+
+            response_data = {
+                'queryID': query_id,
+                'status': 'created',
+                'user_id': session['user_id'],
+                'created_at': session['created_at'].isoformat()
+            }
+            self._send_json_response(200, response_data)
+
+        except json.JSONDecodeError:
+            self._send_json_response(400, {'error': 'Invalid JSON'})
+        except Exception as e:
+            self._send_json_response(500, {'error': str(e)})
+
+    def _handle_update_session(self):
+        """Update session data endpoint"""
+        content_length = int(self.headers['Content-Length'])
+        post_data = self.rfile.read(content_length)
+
+        try:
+            data = json.loads(post_data.decode('utf-8'))
+            query_id = data.get('queryID')
+
+            if not query_id:
+                self._send_json_response(400, {'error': 'queryID required'})
+                return
+
+            # Remove queryID from update data
+            update_data = {k: v for k, v in data.items() if k != 'queryID'}
+
+            success = session_manager.update_session(query_id, **update_data)
+
+            if success:
+                session = session_manager.get_session(query_id)
+                response_data = {
+                    'queryID': query_id,
+                    'status': 'updated',
+                    'session_data': {
+                        'processing_status': session.get('processing_status'),
+                        'last_accessed': session['last_accessed'].isoformat()
+                    }
+                }
+                self._send_json_response(200, response_data)
+            else:
+                self._send_json_response(404, {'error': 'Session not found'})
+
+        except json.JSONDecodeError:
+            self._send_json_response(400, {'error': 'Invalid JSON'})
+        except Exception as e:
+            self._send_json_response(500, {'error': str(e)})
+
+    def _handle_expire_session(self):
+        """Expire session endpoint"""
+        content_length = int(self.headers['Content-Length'])
+        post_data = self.rfile.read(content_length)
+
+        try:
+            data = json.loads(post_data.decode('utf-8'))
+            query_id = data.get('queryID')
+
+            if not query_id:
+                self._send_json_response(400, {'error': 'queryID required'})
+                return
+
+            success = session_manager.expire_session(query_id)
+
+            response_data = {
+                'queryID': query_id,
+                'status': 'expired' if success else 'not_found'
+            }
+            self._send_json_response(200, response_data)
+
+        except json.JSONDecodeError:
+            self._send_json_response(400, {'error': 'Invalid JSON'})
+        except Exception as e:
+            self._send_json_response(500, {'error': str(e)})
+
+    def _handle_get_session(self, query_params):
+        """Get session data endpoint"""
+        query_id = query_params.get('queryID', [None])[0]
+
+        if not query_id:
+            self._send_json_response(400, {'error': 'queryID required'})
+            return
+
+        session = session_manager.get_session(query_id)
+
+        if session:
+            # Serialize datetime objects
+            session_data = session.copy()
+            session_data['created_at'] = session_data['created_at'].isoformat()
+            session_data['last_accessed'] = session_data['last_accessed'].isoformat()
+
+            response_data = {
+                'queryID': query_id,
+                'status': 'found',
+                'session': session_data
+            }
+            self._send_json_response(200, response_data)
+        else:
+            self._send_json_response(404, {'error': 'Session not found or expired'})
+
+    def _handle_get_user_sessions(self, query_params):
+        """Get all sessions for a user endpoint"""
+        user_id = query_params.get('user_id', [None])[0]
+
+        if not user_id:
+            self._send_json_response(400, {'error': 'user_id required'})
+            return
+
+        sessions = session_manager.get_user_sessions(user_id)
+
+        # Serialize datetime objects
+        serialized_sessions = []
+        for session in sessions:
+            session_data = session.copy()
+            session_data['created_at'] = session_data['created_at'].isoformat()
+            session_data['last_accessed'] = session_data['last_accessed'].isoformat()
+            serialized_sessions.append(session_data)
+
+        response_data = {
+            'user_id': user_id,
+            'session_count': len(serialized_sessions),
+            'sessions': serialized_sessions
+        }
+        self._send_json_response(200, response_data)
+
+    def _handle_session_stats(self):
+        """Get session statistics endpoint"""
+        stats = session_manager.get_session_stats()
+        self._send_json_response(200, stats)
+
 
 def generate_mock_graph(query, systemid):
     """Generate mock graph data based on search query"""
@@ -466,8 +862,8 @@ def generate_mock_graph(query, systemid):
     }
 
 
-def start_processing_simulation(systemid, query):
-    """Simulate realistic processing with status updates"""
+def start_processing_simulation(systemid, query, seed_papers=None, query_id=None):
+    """Simulate realistic processing with status updates and session tracking"""
     statuses = [
         {'status': 'finding seed papers', 'duration': 3.0},
         {'status': 'building citation graph', 'duration': 4.0},
@@ -477,14 +873,17 @@ def start_processing_simulation(systemid, query):
         {'status': 'done', 'duration': 0}
     ]
 
-    # Initialize job
+    # Initialize job (legacy compatibility)
     jobs[systemid] = {
         'query': query,
         'status': 'started',
-        'start_time': time.time()
+        'start_time': time.time(),
+        'seed_papers': seed_papers or [],
+        'seed_count': len(seed_papers) if seed_papers else 0,
+        'query_id': query_id  # Link to session
     }
 
-    print(f'🚀 Starting processing for: {systemid}')
+    print(f'🚀 Starting processing for: {systemid} (Session: {query_id})')
 
     def progress_to_next_status(step=0):
         """Progress through status updates"""
@@ -492,21 +891,203 @@ def start_processing_simulation(systemid, query):
             return
 
         current_status = statuses[step]
+        status_text = current_status['status']
 
+        # Update legacy job tracking
         if systemid in jobs:
-            jobs[systemid]['status'] = current_status['status']
-            print(f'⏳ Status update: {systemid} → {current_status["status"]}')
+            jobs[systemid]['status'] = status_text
+            print(f'⏳ Status update: {systemid} → {status_text}')
+
+        # Update session if available
+        if query_id:
+            session_manager.update_session(query_id, processing_status=status_text)
 
         if step < len(statuses) - 1:
             # Schedule next status update
             timer = threading.Timer(current_status['duration'], progress_to_next_status, args=[step + 1])
             timer.start()
         else:
-            print(f'✅ Processing complete for: {systemid}')
+            print(f'✅ Processing complete for: {systemid} (Session: {query_id})')
+            # Mark session as completed
+            if query_id:
+                session_manager.update_session(query_id, processing_status='completed')
 
     # Start the progression after 1 second
     timer = threading.Timer(1.0, progress_to_next_status, args=[0])
     timer.start()
+
+
+# Add session management endpoints to CORSHandler class
+def add_session_endpoints_to_handler():
+    """Add session management endpoint methods to CORSHandler class"""
+
+    def _handle_create_session(self):
+        """Create new session endpoint"""
+        content_length = int(self.headers['Content-Length'])
+        post_data = self.rfile.read(content_length)
+
+        try:
+            data = json.loads(post_data.decode('utf-8'))
+            user_id = data.get('user_id')
+
+            query_id = session_manager.create_session(user_id)
+            session = session_manager.get_session(query_id)
+
+            response_data = {
+                'queryID': query_id,
+                'status': 'created',
+                'user_id': session['user_id'],
+                'created_at': session['created_at'].isoformat()
+            }
+            self._send_json_response(200, response_data)
+
+        except json.JSONDecodeError:
+            self._send_json_response(400, {'error': 'Invalid JSON'})
+        except Exception as e:
+            self._send_json_response(500, {'error': str(e)})
+
+    def _handle_update_session(self):
+        """Create new session endpoint"""
+        content_length = int(self.headers['Content-Length'])
+        post_data = self.rfile.read(content_length)
+
+        try:
+            data = json.loads(post_data.decode('utf-8'))
+            user_id = data.get('user_id')
+
+            query_id = session_manager.create_session(user_id)
+            session = session_manager.get_session(query_id)
+
+            response_data = {
+                'queryID': query_id,
+                'status': 'created',
+                'user_id': session['user_id'],
+                'created_at': session['created_at'].isoformat()
+            }
+            self._send_json_response(200, response_data)
+
+        except json.JSONDecodeError:
+            self._send_json_response(400, {'error': 'Invalid JSON'})
+        except Exception as e:
+            self._send_json_response(500, {'error': str(e)})
+
+    def _handle_update_session(self):
+        """Update session data endpoint"""
+        content_length = int(self.headers['Content-Length'])
+        post_data = self.rfile.read(content_length)
+
+        try:
+            data = json.loads(post_data.decode('utf-8'))
+            query_id = data.get('queryID')
+
+            if not query_id:
+                self._send_json_response(400, {'error': 'queryID required'})
+                return
+
+            # Remove queryID from update data
+            update_data = {k: v for k, v in data.items() if k != 'queryID'}
+
+            success = session_manager.update_session(query_id, **update_data)
+
+            if success:
+                session = session_manager.get_session(query_id)
+                response_data = {
+                    'queryID': query_id,
+                    'status': 'updated',
+                    'session_data': {
+                        'processing_status': session.get('processing_status'),
+                        'last_accessed': session['last_accessed'].isoformat()
+                    }
+                }
+                self._send_json_response(200, response_data)
+            else:
+                self._send_json_response(404, {'error': 'Session not found'})
+
+        except json.JSONDecodeError:
+            self._send_json_response(400, {'error': 'Invalid JSON'})
+        except Exception as e:
+            self._send_json_response(500, {'error': str(e)})
+
+    def _handle_expire_session(self):
+        """Expire session endpoint"""
+        content_length = int(self.headers['Content-Length'])
+        post_data = self.rfile.read(content_length)
+
+        try:
+            data = json.loads(post_data.decode('utf-8'))
+            query_id = data.get('queryID')
+
+            if not query_id:
+                self._send_json_response(400, {'error': 'queryID required'})
+                return
+
+            success = session_manager.expire_session(query_id)
+
+            response_data = {
+                'queryID': query_id,
+                'status': 'expired' if success else 'not_found'
+            }
+            self._send_json_response(200, response_data)
+
+        except json.JSONDecodeError:
+            self._send_json_response(400, {'error': 'Invalid JSON'})
+        except Exception as e:
+            self._send_json_response(500, {'error': str(e)})
+
+    def _handle_get_session(self, query_params):
+        """Get session data endpoint"""
+        query_id = query_params.get('queryID', [None])[0]
+
+        if not query_id:
+            self._send_json_response(400, {'error': 'queryID required'})
+            return
+
+        session = session_manager.get_session(query_id)
+
+        if session:
+            # Serialize datetime objects
+            session_data = session.copy()
+            session_data['created_at'] = session_data['created_at'].isoformat()
+            session_data['last_accessed'] = session_data['last_accessed'].isoformat()
+
+            response_data = {
+                'queryID': query_id,
+                'status': 'found',
+                'session': session_data
+            }
+            self._send_json_response(200, response_data)
+        else:
+            self._send_json_response(404, {'error': 'Session not found or expired'})
+
+    def _handle_get_user_sessions(self, query_params):
+        """Get all sessions for a user endpoint"""
+        user_id = query_params.get('user_id', [None])[0]
+
+        if not user_id:
+            self._send_json_response(400, {'error': 'user_id required'})
+            return
+
+        sessions = session_manager.get_user_sessions(user_id)
+
+        # Serialize datetime objects
+        serialized_sessions = []
+        for session in sessions:
+            session_data = session.copy()
+            session_data['created_at'] = session_data['created_at'].isoformat()
+            session_data['last_accessed'] = session_data['last_accessed'].isoformat()
+            serialized_sessions.append(session_data)
+
+        response_data = {
+            'user_id': user_id,
+            'session_count': len(serialized_sessions),
+            'sessions': serialized_sessions
+        }
+        self._send_json_response(200, response_data)
+
+    def _handle_session_stats(self):
+        """Get session statistics endpoint"""
+        stats = session_manager.get_session_stats()
+        self._send_json_response(200, stats)
 
 
 def run_server():

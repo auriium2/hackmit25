@@ -65,11 +65,11 @@ class OpenAlexClient:
         self._rate_limit()
 
         url = f"{self.BASE_URL}/works"
+        # Use title.search for more relevant results focused on titles
         params = {
-            "search": query,
+            "filter": f"title.search:{query},type:article,publication_year:>2010,cited_by_count:>10",
             "per-page": min(per_page, 200),  # OpenAlex max is 200
-            "sort": sort,
-            "filter": "type:article,publication_year:>2015"  # Focus on recent articles
+            "sort": sort
         }
 
         try:
@@ -112,7 +112,7 @@ class LLMQueryProcessor:
                     "anthropic-version": "2023-06-01"
                 },
                 json={
-                    "model": "claude-3-sonnet-20240229",  # you can swap for "claude-3-opus" or "claude-3-haiku"
+                    "model": "claude-3-5-sonnet-20241022",
                     "max_tokens": 200,
                     "temperature": 0.3,
                     "messages": [
@@ -122,7 +122,7 @@ class LLMQueryProcessor:
             )
             response.raise_for_status()
 
-            content = response.json()["choices"][0]["message"]["content"].strip()
+            content = response.json()["content"][0]["text"].strip()
             # Try to parse as JSON
             try:
                 concepts = json.loads(content)
@@ -218,6 +218,26 @@ class SeedPaperRetriever:
 
                 # Skip low-quality entries
                 if not title or citation_count < 5:
+                    return None
+
+                # Check for keyword relevance in title and abstract
+                title_lower = title.lower()
+                abstract_lower = abstract.lower()
+                topic_lower = topic_group.lower()
+
+                # Extract key terms from the topic group
+                key_terms = [term.strip() for term in topic_lower.split() if len(term.strip()) > 2]
+
+                # Check if at least one key term appears in title or abstract
+                relevance_found = False
+                for term in key_terms:
+                    if term in title_lower or term in abstract_lower:
+                        relevance_found = True
+                        break
+
+                # Skip papers that don't contain any relevant keywords
+                if not relevance_found and len(key_terms) > 0:
+                    logger.debug(f"Skipping irrelevant paper: {title} (no keywords from '{topic_group}' found)")
                     return None
 
                 return Paper(
