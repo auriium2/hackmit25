@@ -9,14 +9,14 @@ from pprint import pprint
 
 artifacts_path = "models"
 
-pipeline_options = PdfPipelineOptions(artifacts_path=artifacts_path)
+pipeline_options = PdfPipelineOptions() #artifacts_path=artifacts_path
 doc_converter = DocumentConverter(
     format_options={
         InputFormat.PDF: PdfFormatOption(pipeline_options=pipeline_options)
     }
 )
 
-source = "https://arxiv.org/pdf/1706.03762"  # file path or URL
+source = "https://arxiv.org/pdf/2509.08461"  # file path or URL
 doc = doc_converter.convert(source).document
 
 serializer = MarkdownDocSerializer(doc=doc)
