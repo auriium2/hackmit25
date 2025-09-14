@@ -21,4 +21,5 @@ dependencies = [
     "dotenv>=0.9.9",
     "pyproject-toml>=0.1.0",
     "pyarrow>=21.0.0",
+    "xxhash>=3.5.0",
 ]
