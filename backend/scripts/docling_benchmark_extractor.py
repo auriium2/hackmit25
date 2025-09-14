@@ -281,7 +281,7 @@ class DoclingBenchmarkExtractor:
         self.pdf_processor = DoclingPDFProcessor()
 
         # Initialize OpenAI client
-        api_key = "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"
+        api_key = os.getenv("OPENAI_API_KEY")
         if not api_key:
             logger.warning("OPENAI_API_KEY not set")
             self.client = None
