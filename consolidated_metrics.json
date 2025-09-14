@@ -1,0 +1,560 @@
+{
+  "standardized_metrics": {
+    "bleu_score_wmt2014_en_de": {
+      "transformer_paper": {
+        "value": "28.4",
+        "original_key": "BLEU_score_WMT2014_En_De",
+        "original_value": "28.4"
+      }
+    },
+    "base_model_parameters": {
+      "transformer_paper": {
+        "value": "65.0M",
+        "original_key": "base_model_parameters",
+        "original_value": "65M"
+      }
+    },
+    "large_model_parameters": {
+      "transformer_paper": {
+        "value": "213.0M",
+        "original_key": "large_model_parameters",
+        "original_value": "213M"
+      }
+    },
+    "penn_treebank_accuracy": {
+      "transformer_paper": {
+        "value": "99.6%",
+        "original_key": "Penn_Treebank_accuracy",
+        "original_value": "99.6%"
+      }
+    },
+    "penn_treebank_perplexity": {
+      "transformer_paper": {
+        "value": "1.73",
+        "original_key": "Penn_Treebank_perplexity",
+        "original_value": "1.73"
+      }
+    },
+    "base_model_training_time": {
+      "transformer_paper": {
+        "value": "12.0 hours",
+        "original_key": "base_model_training_time",
+        "original_value": "12 hours"
+      }
+    },
+    "large_model_training_time": {
+      "transformer_paper": {
+        "value": "3.5s",
+        "original_key": "large_model_training_time",
+        "original_value": "3.5 days"
+      }
+    },
+    "inference_time": {
+      "transformer_paper": {
+        "value": "20.0ms",
+        "original_key": "inference_time",
+        "original_value": "20ms per sequence"
+      }
+    },
+    "gpu_count": {
+      "transformer_paper": {
+        "value": "8 P100",
+        "original_key": "GPU_count",
+        "original_value": "8 P100"
+      }
+    },
+    "glue_score_bert_base": {
+      "bert_paper": {
+        "value": "78.3%",
+        "original_key": "GLUE_score_BERT_Base",
+        "original_value": "78.3%"
+      }
+    },
+    "glue_score_bert_large": {
+      "bert_paper": {
+        "value": "80.5%",
+        "original_key": "GLUE_score_BERT_Large",
+        "original_value": "80.5%"
+      }
+    },
+    "bert_base_parameters": {
+      "bert_paper": {
+        "value": "110.0M",
+        "original_key": "BERT_Base_parameters",
+        "original_value": "110M"
+      }
+    },
+    "bert_large_parameters": {
+      "bert_paper": {
+        "value": "340.0M",
+        "original_key": "BERT_Large_parameters",
+        "original_value": "340M"
+      }
+    },
+    "time": {
+      "bert_paper": {
+        "value": "4.0s",
+        "original_key": "training_time",
+        "original_value": "4 days"
+      }
+    },
+    "hardware": {
+      "bert_paper": {
+        "value": "4 Cloud TPUs (16 TPU chips)",
+        "original_key": "training_hardware",
+        "original_value": "4 Cloud TPUs (16 TPU chips)"
+      }
+    },
+    "squad_v1.1_f1": {
+      "bert_paper": {
+        "value": "93.2",
+        "original_key": "SQuAD_v1.1_F1",
+        "original_value": "93.2"
+      }
+    },
+    "squad_v1.1_exact_match": {
+      "bert_paper": {
+        "value": "88.5%",
+        "original_key": "SQuAD_v1.1_exact_match",
+        "original_value": "88.5%"
+      }
+    },
+    "mnli_matched_accuracy": {
+      "bert_paper": {
+        "value": "87.4%",
+        "original_key": "MNLI_matched_accuracy",
+        "original_value": "87.4%"
+      }
+    },
+    "mnli_mismatched_accuracy": {
+      "bert_paper": {
+        "value": "86.7%",
+        "original_key": "MNLI_mismatched_accuracy",
+        "original_value": "86.7%"
+      }
+    },
+    "fine_tuning_time": {
+      "bert_paper": {
+        "value": "1.0 hours",
+        "original_key": "fine_tuning_time",
+        "original_value": "1 hour"
+      }
+    },
+    "fine_tuning_hardware": {
+      "bert_paper": {
+        "value": "1 Cloud TPU",
+        "original_key": "fine_tuning_hardware",
+        "original_value": "1 Cloud TPU"
+      }
+    },
+    "control_frequency_mpc": {
+      "robotics_paper": {
+        "value": "40 Hz",
+        "original_key": "control_frequency_MPC",
+        "original_value": "40 Hz"
+      }
+    },
+    "control_frequency_wbic": {
+      "robotics_paper": {
+        "value": "500 Hz",
+        "original_key": "control_frequency_WBIC",
+        "original_value": "500 Hz"
+      }
+    },
+    "max_speed": {
+      "robotics_paper": {
+        "value": "3.7 m/s",
+        "original_key": "maximum_speed",
+        "original_value": "3.7 m/s"
+      }
+    },
+    "success_rate": {
+      "robotics_paper": {
+        "value": "95.2%",
+        "original_key": "success_rate",
+        "original_value": "95.2%"
+      }
+    },
+    "joint_count": {
+      "robotics_paper": {
+        "value": "12",
+        "original_key": "actuated_joints",
+        "original_value": "12"
+      }
+    }
+  },
+  "metric_summary": {
+    "bleu_score_wmt2014_en_de": {
+      "appears_in_papers": 1,
+      "unique_values": 1,
+      "all_values": [
+        "28.4"
+      ],
+      "papers_with_metric": [
+        "transformer_paper"
+      ],
+      "min_value": 28.4,
+      "max_value": 28.4,
+      "avg_value": 28.4
+    },
+    "base_model_parameters": {
+      "appears_in_papers": 1,
+      "unique_values": 1,
+      "all_values": [
+        "65.0M"
+      ],
+      "papers_with_metric": [
+        "transformer_paper"
+      ],
+      "min_value": 65.0,
+      "max_value": 65.0,
+      "avg_value": 65.0
+    },
+    "large_model_parameters": {
+      "appears_in_papers": 1,
+      "unique_values": 1,
+      "all_values": [
+        "213.0M"
+      ],
+      "papers_with_metric": [
+        "transformer_paper"
+      ],
+      "min_value": 213.0,
+      "max_value": 213.0,
+      "avg_value": 213.0
+    },
+    "penn_treebank_accuracy": {
+      "appears_in_papers": 1,
+      "unique_values": 1,
+      "all_values": [
+        "99.6%"
+      ],
+      "papers_with_metric": [
+        "transformer_paper"
+      ],
+      "min_value": 99.6,
+      "max_value": 99.6,
+      "avg_value": 99.6
+    },
+    "penn_treebank_perplexity": {
+      "appears_in_papers": 1,
+      "unique_values": 1,
+      "all_values": [
+        "1.73"
+      ],
+      "papers_with_metric": [
+        "transformer_paper"
+      ],
+      "min_value": 1.73,
+      "max_value": 1.73,
+      "avg_value": 1.73
+    },
+    "base_model_training_time": {
+      "appears_in_papers": 1,
+      "unique_values": 1,
+      "all_values": [
+        "12.0 hours"
+      ],
+      "papers_with_metric": [
+        "transformer_paper"
+      ],
+      "min_value": 12.0,
+      "max_value": 12.0,
+      "avg_value": 12.0
+    },
+    "large_model_training_time": {
+      "appears_in_papers": 1,
+      "unique_values": 1,
+      "all_values": [
+        "3.5s"
+      ],
+      "papers_with_metric": [
+        "transformer_paper"
+      ],
+      "min_value": 3.5,
+      "max_value": 3.5,
+      "avg_value": 3.5
+    },
+    "inference_time": {
+      "appears_in_papers": 1,
+      "unique_values": 1,
+      "all_values": [
+        "20.0ms"
+      ],
+      "papers_with_metric": [
+        "transformer_paper"
+      ],
+      "min_value": 20.0,
+      "max_value": 20.0,
+      "avg_value": 20.0
+    },
+    "gpu_count": {
+      "appears_in_papers": 1,
+      "unique_values": 1,
+      "all_values": [
+        "8 P100"
+      ],
+      "papers_with_metric": [
+        "transformer_paper"
+      ],
+      "min_value": 8.0,
+      "max_value": 8.0,
+      "avg_value": 8.0
+    },
+    "glue_score_bert_base": {
+      "appears_in_papers": 1,
+      "unique_values": 1,
+      "all_values": [
+        "78.3%"
+      ],
+      "papers_with_metric": [
+        "bert_paper"
+      ],
+      "min_value": 78.3,
+      "max_value": 78.3,
+      "avg_value": 78.3
+    },
+    "glue_score_bert_large": {
+      "appears_in_papers": 1,
+      "unique_values": 1,
+      "all_values": [
+        "80.5%"
+      ],
+      "papers_with_metric": [
+        "bert_paper"
+      ],
+      "min_value": 80.5,
+      "max_value": 80.5,
+      "avg_value": 80.5
+    },
+    "bert_base_parameters": {
+      "appears_in_papers": 1,
+      "unique_values": 1,
+      "all_values": [
+        "110.0M"
+      ],
+      "papers_with_metric": [
+        "bert_paper"
+      ],
+      "min_value": 110.0,
+      "max_value": 110.0,
+      "avg_value": 110.0
+    },
+    "bert_large_parameters": {
+      "appears_in_papers": 1,
+      "unique_values": 1,
+      "all_values": [
+        "340.0M"
+      ],
+      "papers_with_metric": [
+        "bert_paper"
+      ],
+      "min_value": 340.0,
+      "max_value": 340.0,
+      "avg_value": 340.0
+    },
+    "time": {
+      "appears_in_papers": 1,
+      "unique_values": 1,
+      "all_values": [
+        "4.0s"
+      ],
+      "papers_with_metric": [
+        "bert_paper"
+      ],
+      "min_value": 4.0,
+      "max_value": 4.0,
+      "avg_value": 4.0
+    },
+    "hardware": {
+      "appears_in_papers": 1,
+      "unique_values": 1,
+      "all_values": [
+        "4 Cloud TPUs (16 TPU chips)"
+      ],
+      "papers_with_metric": [
+        "bert_paper"
+      ],
+      "min_value": 4.0,
+      "max_value": 4.0,
+      "avg_value": 4.0
+    },
+    "squad_v1.1_f1": {
+      "appears_in_papers": 1,
+      "unique_values": 1,
+      "all_values": [
+        "93.2"
+      ],
+      "papers_with_metric": [
+        "bert_paper"
+      ],
+      "min_value": 93.2,
+      "max_value": 93.2,
+      "avg_value": 93.2
+    },
+    "squad_v1.1_exact_match": {
+      "appears_in_papers": 1,
+      "unique_values": 1,
+      "all_values": [
+        "88.5%"
+      ],
+      "papers_with_metric": [
+        "bert_paper"
+      ],
+      "min_value": 88.5,
+      "max_value": 88.5,
+      "avg_value": 88.5
+    },
+    "mnli_matched_accuracy": {
+      "appears_in_papers": 1,
+      "unique_values": 1,
+      "all_values": [
+        "87.4%"
+      ],
+      "papers_with_metric": [
+        "bert_paper"
+      ],
+      "min_value": 87.4,
+      "max_value": 87.4,
+      "avg_value": 87.4
+    },
+    "mnli_mismatched_accuracy": {
+      "appears_in_papers": 1,
+      "unique_values": 1,
+      "all_values": [
+        "86.7%"
+      ],
+      "papers_with_metric": [
+        "bert_paper"
+      ],
+      "min_value": 86.7,
+      "max_value": 86.7,
+      "avg_value": 86.7
+    },
+    "fine_tuning_time": {
+      "appears_in_papers": 1,
+      "unique_values": 1,
+      "all_values": [
+        "1.0 hours"
+      ],
+      "papers_with_metric": [
+        "bert_paper"
+      ],
+      "min_value": 1.0,
+      "max_value": 1.0,
+      "avg_value": 1.0
+    },
+    "fine_tuning_hardware": {
+      "appears_in_papers": 1,
+      "unique_values": 1,
+      "all_values": [
+        "1 Cloud TPU"
+      ],
+      "papers_with_metric": [
+        "bert_paper"
+      ],
+      "min_value": 1.0,
+      "max_value": 1.0,
+      "avg_value": 1.0
+    },
+    "control_frequency_mpc": {
+      "appears_in_papers": 1,
+      "unique_values": 1,
+      "all_values": [
+        "40 Hz"
+      ],
+      "papers_with_metric": [
+        "robotics_paper"
+      ],
+      "min_value": 40.0,
+      "max_value": 40.0,
+      "avg_value": 40.0
+    },
+    "control_frequency_wbic": {
+      "appears_in_papers": 1,
+      "unique_values": 1,
+      "all_values": [
+        "500 Hz"
+      ],
+      "papers_with_metric": [
+        "robotics_paper"
+      ],
+      "min_value": 500.0,
+      "max_value": 500.0,
+      "avg_value": 500.0
+    },
+    "max_speed": {
+      "appears_in_papers": 1,
+      "unique_values": 1,
+      "all_values": [
+        "3.7 m/s"
+      ],
+      "papers_with_metric": [
+        "robotics_paper"
+      ],
+      "min_value": 3.7,
+      "max_value": 3.7,
+      "avg_value": 3.7
+    },
+    "success_rate": {
+      "appears_in_papers": 1,
+      "unique_values": 1,
+      "all_values": [
+        "95.2%"
+      ],
+      "papers_with_metric": [
+        "robotics_paper"
+      ],
+      "min_value": 95.2,
+      "max_value": 95.2,
+      "avg_value": 95.2
+    },
+    "joint_count": {
+      "appears_in_papers": 1,
+      "unique_values": 1,
+      "all_values": [
+        "12"
+      ],
+      "papers_with_metric": [
+        "robotics_paper"
+      ],
+      "min_value": 12.0,
+      "max_value": 12.0,
+      "avg_value": 12.0
+    }
+  },
+  "all_metric_names": [
+    "base_model_parameters",
+    "base_model_training_time",
+    "bert_base_parameters",
+    "bert_large_parameters",
+    "bleu_score_wmt2014_en_de",
+    "control_frequency_mpc",
+    "control_frequency_wbic",
+    "fine_tuning_hardware",
+    "fine_tuning_time",
+    "glue_score_bert_base",
+    "glue_score_bert_large",
+    "gpu_count",
+    "hardware",
+    "inference_time",
+    "joint_count",
+    "large_model_parameters",
+    "large_model_training_time",
+    "max_speed",
+    "mnli_matched_accuracy",
+    "mnli_mismatched_accuracy",
+    "penn_treebank_accuracy",
+    "penn_treebank_perplexity",
+    "squad_v1.1_exact_match",
+    "squad_v1.1_f1",
+    "success_rate",
+    "time"
+  ],
+  "paper_count": 3,
+  "papers": [
+    "transformer_paper",
+    "bert_paper",
+    "robotics_paper"
+  ]
+}
