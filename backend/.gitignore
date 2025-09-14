@@ -1,0 +1,72 @@
+# Python artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+.env
+.venv
+env/
+venv/
+ENV/
+
+# Development environments
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Local project files
+.DS_Store
+.coverage
+htmlcov/
+.hypothesis/
+.pytest_cache/
+.coverage.*
+*.cover
+.tox/
+nosetests.xml
+coverage.xml
+*.cover
+
+# Application specific
+models.zip
+.ipynb_checkpoints/
+.ropeproject/
+
+# Logs
+logs/
+*.log
+
+# Exclude large model files
+models/**/*.pth
+models/**/*.safetensors
+models/**/*.bin
+models/**/*.onnx
+models/**/*.model
+models/**/*.pb
+models/**/*.tar.gz
+models/**/*.ckpt
+models/EasyOcr/
+models/ds4sd--CodeFormulaV2/
+models/ds4sd--DocumentFigureClassifier/
+models/ds4sd--docling-layout-heron/
+models/ds4sd--docling-models/
+.DS_Store

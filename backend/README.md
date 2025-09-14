@@ -1,3 +1,5 @@
+# HackMIT 2025 Research Paper Comparison Tool - Backend
+
 We are currently competing in a hackathon, under the education track. We think that currently, for casual researchers, it is difficult to compare research papers. In order to determine state-of-the-art papers, or compare papers quantitatively, it is necessary to
 - have at least some domain knowledge in order to identify relevant quantitative benchmarks
 - read through hundreds of papers and find benchmarks that are shared between competing papers
@@ -14,3 +16,36 @@ In order to solve this, we propose a software that given a user input, like "exp
 3. Once a graph of nodes is discovered, the backend will spin up a massively parallel process, spawning a domain expert agent per paper (perhaps with a blackboard, though that does reduce parallelism if not implemented correctly) with the goal of taking all explored documents, vectorizing or otherwise creating a base of knowledge about them, and using that representation to search each paper for all relevant metrics in said paper. Metrics must be discovered and stored in a way such that they are identifiable and "unique-keyed" between documents even if the agent does not have a blackboard. For example, if paper A and paper Z both reference LMArena scores, or RMSE tracking of a leg, this should be keyed into a global schema such that paper A, Z, and a future paper X can all be compared under the same benchmark. A quick textual summary of each paper should also be produced.
 
 4. Finally, once every paper has had metrics discovered, the backend will output the graph, with edges of citations and node weights being a vector of shared benchmark between all papers (If this isn't possible we will figure out something else). From here this data structure can be passed off to the frontend, which another teammate is working on.
+
+## Model Management
+
+This project uses several large ML model files that exceed GitHub's file size limits. To manage these files:
+
+### Setup and Installation
+
+After cloning the repository, extract the model files:
+
+```bash
+# From the backend directory
+python scripts/model_management.py extract_archive
+```
+
+This extracts the model files from `models.zip` into the `models/` directory.
+
+### Before Committing Changes
+
+If you've added or modified model files, archive them before committing:
+
+```bash
+# Create/update the models.zip archive
+python scripts/model_management.py create_archive
+
+# Clean up large model files from the repo
+python scripts/model_management.py clean
+```
+
+This prevents Git from tracking the large files while preserving them in the zip archive.
+
+### Model Details
+
+See `models/README.md` for more information about the specific model files and how to manage them.
