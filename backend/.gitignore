@@ -55,9 +55,17 @@ models.zip
 logs/
 *.log
 
-# Keep model files tracked by Git LFS
-!models/**/*.pth
-!models/**/*.safetensors
-!models/**/*.bin
-!models/**/*.onnx
-!models/**/*.model
+# Exclude large model files
+models/**/*.pth
+models/**/*.safetensors
+models/**/*.bin
+models/**/*.onnx
+models/**/*.model
+models/**/*.pb
+models/**/*.tar.gz
+models/**/*.ckpt
+models/EasyOcr/
+models/ds4sd--CodeFormulaV2/
+models/ds4sd--DocumentFigureClassifier/
+models/ds4sd--docling-layout-heron/
+models/ds4sd--docling-models/
