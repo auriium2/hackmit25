@@ -1,1 +1,0 @@
-# App package for HackMIT 2025 Research Paper Comparison Backend
