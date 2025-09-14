@@ -119,143 +119,13 @@ export function GraphView({ searchQuery, onBack, graphData }: GraphViewProps) {
     visibleLayers: ['citations', 'collaborations', 'methodology', 'temporal'],
   });
 
-  // Convert backend graph data to papers if available, otherwise use mock data
-  const [papers] = useState<Paper[]>(() => {
+  // Only use backend data for papers
+  const papers = useMemo(() => {
     if (graphData && graphData.graph.nodes.length > 0) {
-      // Convert backend graph nodes to Paper format
       return convertBackendNodesToPapers(graphData.graph.nodes, graphData.graph.edges);
     }
-
-    // Fallback to mock data
-    const researchTopics = [
-      {
-        title: "Transformer Architectures for Language Understanding",
-        summary: "Introduces the transformer architecture using attention mechanisms for neural machine translation, eliminating the need for recurrent networks while achieving superior performance.",
-        keywords: ["transformer", "attention", "neural-machine-translation"]
-      },
-      {
-        title: "Bidirectional Encoder Representations for Language Models", 
-        summary: "Presents BERT, a bidirectional transformer model that pre-trains deep representations by jointly conditioning on both left and right context, achieving new state-of-the-art results.",
-        keywords: ["bidirectional", "pre-training", "language-model"]
-      },
-      {
-        title: "Large-Scale Language Models as Few-Shot Learners",
-        summary: "Demonstrates that scaling up language models greatly improves task-agnostic, few-shot performance, sometimes even reaching competitiveness with prior state-of-the-art fine-tuning approaches.",
-        keywords: ["few-shot", "large-language-model", "scaling"]
-      },
-      {
-        title: "Deep Residual Networks for Image Classification",
-        summary: "Introduces residual learning framework to ease training of networks that are substantially deeper, using skip connections to enable training of very deep neural networks.",
-        keywords: ["resnet", "skip-connections", "deep-learning"]
-      },
-      {
-        title: "Convolutional Neural Networks for Visual Recognition",
-        summary: "Demonstrates that convolutional neural networks can achieve breakthrough performance on ImageNet classification, significantly outperforming traditional computer vision approaches.",
-        keywords: ["cnn", "computer-vision", "image-classification"]
-      },
-    ];
-
-    const additionalTopics = [
-      "Multi-Head Attention Mechanisms", "Self-Supervised Learning Approaches", "Graph Neural Network Architectures",
-      "Reinforcement Learning with Policy Gradients", "Generative Adversarial Network Training", "Variational Autoencoder Methods",
-      "Meta-Learning for Few-Shot Classification", "Neural Architecture Search Techniques", "Contrastive Learning Frameworks",
-      "Knowledge Distillation Methods", "Federated Learning Systems", "Differential Privacy in ML",
-      "Adversarial Robustness Training", "Multi-Modal Representation Learning", "Causal Inference in AI",
-      "Explainable AI Techniques", "Transfer Learning Strategies", "Active Learning Methods",
-      "Curriculum Learning Approaches", "Memory-Augmented Networks", "Attention-Based Models",
-      "Sequence-to-Sequence Learning", "Semi-Supervised Learning", "Domain Adaptation Methods",
-      "Neural Machine Translation", "Computer Vision Transformers", "Speech Recognition Systems",
-      "Recommendation System Architectures", "Time Series Forecasting Models", "Natural Language Generation"
-    ];
-
-    const mockPapers: Paper[] = [];
-
-    // Add main papers
-    researchTopics.forEach((topic, i) => {
-      const year = 2012 + i * 2;
-      const angle = (i / researchTopics.length) * 2 * Math.PI;
-      const radius = 400 + Math.random() * 400;
-      const centerX = 600;
-      const centerY = 450;
-      
-      mockPapers.push({
-        id: (i + 1).toString(),
-        title: topic.title,
-        authors: [`Author${i + 1} et al.`],
-        year,
-        citations: Math.floor(20000 + Math.random() * 40000),
-        x: centerX + Math.cos(angle) * radius + (Math.random() - 0.5) * 200,
-        y: centerY + Math.sin(angle) * radius + (Math.random() - 0.5) * 200,
-        vx: 0,
-        vy: 0,
-        connections: [],
-        accuracy: 50 + Math.random() * 50, // Ensures good distribution
-        relevanceToSeed: 0.7 + Math.random() * 0.3,
-        trustScore: Math.floor(70 + Math.random() * 30),
-        benchmark: ['Accuracy', 'F1-Score', 'BLEU', 'ROUGE'][Math.floor(Math.random() * 4)],
-        methodology: topic.keywords,
-        url: `https://arxiv.org/abs/${1706 + i}.${String(Math.floor(Math.random() * 100000)).padStart(5, '0')}`,
-        summary: topic.summary,
-      });
-    });
-
-    // Add additional papers
-    additionalTopics.forEach((topic, i) => {
-      const year = 2010 + Math.random() * 15;
-      const performanceRand = Math.random();
-      let accuracy;
-      if (performanceRand < 0.25) {
-        accuracy = 50 + Math.random() * 20; // 25% low performance (white nodes)
-      } else if (performanceRand < 0.65) {
-        accuracy = 70 + Math.random() * 15; // 40% medium performance  
-      } else {
-        accuracy = 85 + Math.random() * 15; // 35% high performance (green nodes)
-      }
-
-      const angle = ((i + 5) / (additionalTopics.length + 5)) * 2 * Math.PI;
-      const radius = 300 + Math.random() * 600;
-      const centerX = 600;
-      const centerY = 450;
-      
-      mockPapers.push({
-        id: (i + 6).toString(),
-        title: topic,
-        authors: [`Researcher${i + 1} et al.`],
-        year: Math.floor(year),
-        citations: Math.floor(Math.random() * 35000 + 500),
-        x: centerX + Math.cos(angle) * radius + (Math.random() - 0.5) * 400,
-        y: centerY + Math.sin(angle) * radius + (Math.random() - 0.5) * 400,
-        vx: 0,
-        vy: 0,
-        connections: [],
-        accuracy,
-        relevanceToSeed: Math.random(),
-        trustScore: Math.floor(60 + Math.random() * 40),
-        benchmark: ['Accuracy', 'F1-Score', 'BLEU', 'ROUGE', 'Precision', 'Recall'][Math.floor(Math.random() * 6)],
-        methodology: ['deep-learning', 'neural-networks', 'machine-learning'],
-        url: `https://example.com/paper/${i + 6}`,
-        summary: `This research explores ${topic.toLowerCase()}, contributing novel insights to the field through innovative methodologies and comprehensive experimental validation.`,
-      });
-    });
-
-    // Create connections based on similar topics/years
-    mockPapers.forEach(paper => {
-      const potentialConnections = mockPapers.filter(otherPaper => 
-        otherPaper.id !== paper.id && 
-        Math.abs(otherPaper.year - paper.year) <= 3
-      );
-      
-      const numConnections = Math.floor(Math.random() * 3) + 1;
-      const selectedConnections = potentialConnections
-        .sort(() => Math.random() - 0.5)
-        .slice(0, numConnections)
-        .map(p => p.id);
-      
-      paper.connections = selectedConnections;
-    });
-
-    return mockPapers;
-  });
+    return [];
+  }, [graphData]);
 
   const getNodeRadius = () => 25; // Uniform size
 
@@ -312,11 +182,6 @@ export function GraphView({ searchQuery, onBack, graphData }: GraphViewProps) {
     if (simulation.alpha < 0.005) {
       setIsSimulationRunning(false);
       setSimulationComplete(true);
-      setPapers(prevPapers => prevPapers.map(paper => ({
-        ...paper,
-        finalX: paper.x,
-        finalY: paper.y
-      })));
       return;
     }
 
@@ -926,7 +791,7 @@ export function GraphView({ searchQuery, onBack, graphData }: GraphViewProps) {
                     <div className="text-cyan-400 text-sm">Loading...</div>
                   )}
                 </div>
-                
+
                 {/* Paper Title and Link */}
                 <div>
                   <div className="flex items-start justify-between mb-2">

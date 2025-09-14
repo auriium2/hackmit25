@@ -1,16 +1,21 @@
 import { motion } from 'motion/react';
 import { CheckCircle, Circle, Database, FileText, Brain } from 'lucide-react';
 import { useState, useEffect } from 'react';
+import { apiService, GraphResponse } from '../services/api';
 
 interface LoadingPageProps {
-  onComplete: () => void;
+  onComplete: (graphData?: GraphResponse) => void;
+  searchQuery?: string;
+  systemId?: string;
 }
 
-export function LoadingPage({ onComplete }: LoadingPageProps) {
+export function LoadingPage({ onComplete, searchQuery, systemId }: LoadingPageProps) {
   const [progress, setProgress] = useState(0);
   const [currentTask, setCurrentTask] = useState(0);
   const [pagesIndexed, setPagesIndexed] = useState(0);
-  
+  const [currentStatus, setCurrentStatus] = useState('starting');
+  const [error, setError] = useState<string | null>(null);
+
   const tasks = [
     { icon: Database, label: "Connecting to research databases", completed: false },
     { icon: FileText, label: "Indexing research papers", completed: false },
@@ -20,34 +25,123 @@ export function LoadingPage({ onComplete }: LoadingPageProps) {
 
   const [taskStates, setTaskStates] = useState(tasks);
 
+  // Status mapping for backend statuses to UI tasks
+  const statusToTask = {
+    'started': 0,
+    'finding seed papers': 0,
+    'building citation graph': 1,
+    'analyzing papers with AI agents': 2,
+    'generating insights': 3,
+    'finalizing graph': 3,
+    'done': 4
+  };
+
   useEffect(() => {
-    const interval = setInterval(() => {
-      setProgress(prev => {
-        if (prev >= 100) {
-          clearInterval(interval);
-          setTimeout(onComplete, 1000);
-          return 100;
-        }
-        return prev + Math.random() * 3 + 1;
-      });
+    let interval: NodeJS.Timeout;
+    let isActive = true;
 
-      setPagesIndexed(prev => prev + Math.floor(Math.random() * 50) + 10);
-
-      // Update task completion
-      const newProgress = Math.min(progress + Math.random() * 3 + 1, 100);
-      const newCurrentTask = Math.floor((newProgress / 100) * tasks.length);
-      
-      if (newCurrentTask !== currentTask) {
-        setCurrentTask(newCurrentTask);
-        setTaskStates(prev => prev.map((task, index) => ({
-          ...task,
-          completed: index < newCurrentTask
-        })));
+    const processWithAPI = async () => {
+      if (!systemId || !searchQuery) {
+        // Fallback to mock processing
+        startMockProcessing();
+        return;
       }
-    }, 100);
 
-    return () => clearInterval(interval);
-  }, [progress, currentTask, onComplete]);
+      try {
+        // Check if backend is available
+        const isHealthy = await apiService.checkHealth();
+
+        if (!isHealthy) {
+          console.warn('Backend not available, using mock processing');
+          startMockProcessing();
+          return;
+        }
+
+        // Poll for real status updates
+        const graphResponse = await apiService.pollForGraph(systemId, (status) => {
+          if (!isActive) return;
+
+          setCurrentStatus(status);
+
+          // Update progress based on status
+          const taskIndex = statusToTask[status as keyof typeof statusToTask] ?? 0;
+          setCurrentTask(taskIndex);
+          setProgress(Math.min((taskIndex / tasks.length) * 100, 95));
+
+          // Update task states
+          setTaskStates(prev => prev.map((task, index) => ({
+            ...task,
+            completed: index < taskIndex
+          })));
+
+          // Simulate papers being indexed
+          if (status === 'building citation graph' || status === 'analyzing papers with AI agents') {
+            setPagesIndexed(prev => prev + Math.floor(Math.random() * 30) + 5);
+          }
+        });
+
+        if (isActive) {
+          setProgress(100);
+          setTaskStates(prev => prev.map(task => ({ ...task, completed: true })));
+          setTimeout(() => onComplete(graphResponse), 1000);
+        }
+
+      } catch (error) {
+        if (isActive) {
+          console.error('API processing failed:', error);
+          setError(error instanceof Error ? error.message : 'Processing failed');
+          // Fallback to mock processing after error
+          setTimeout(() => {
+            if (isActive) {
+              setError(null);
+              startMockProcessing();
+            }
+          }, 2000);
+        }
+      }
+    };
+
+    const startMockProcessing = () => {
+      interval = setInterval(() => {
+        if (!isActive) return;
+
+        setProgress(prev => {
+          if (prev >= 100) {
+            clearInterval(interval);
+            setTimeout(() => onComplete(), 1000);
+            return 100;
+          }
+          return prev + Math.random() * 3 + 1;
+        });
+
+        setPagesIndexed(prev => prev + Math.floor(Math.random() * 50) + 10);
+
+        // Update task completion
+        setCurrentTask(prev => {
+          const newProgress = Math.min(progress + Math.random() * 3 + 1, 100);
+          const newCurrentTask = Math.floor((newProgress / 100) * tasks.length);
+
+          if (newCurrentTask !== prev) {
+            setTaskStates(prevTasks => prevTasks.map((task, index) => ({
+              ...task,
+              completed: index < newCurrentTask
+            })));
+          }
+
+          return newCurrentTask;
+        });
+      }, 100);
+    };
+
+    processWithAPI();
+
+    return () => {
+      isActive = false;
+      if (interval) {
+        clearInterval(interval);
+      }
+    };
+  }, [systemId, searchQuery, onComplete]);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 via-blue-900 to-black flex flex-col items-center justify-center p-8 relative overflow-hidden">
@@ -132,6 +226,15 @@ export function LoadingPage({ onComplete }: LoadingPageProps) {
         <div className="text-center mb-8">
           <h2 className="text-3xl font-bold text-cyan-100 mb-2">Processing Research Data</h2>
           <p className="text-cyan-100/70">Building your knowledge graph</p>
+          {error && (
+            <div className="mt-2 p-3 bg-red-500/20 border border-red-500/40 rounded-lg">
+              <p className="text-red-300 text-sm">{error}</p>
+              <p className="text-red-200/70 text-xs mt-1">Falling back to demo mode...</p>
+            </div>
+          )}
+          {currentStatus !== 'starting' && (
+            <p className="text-cyan-300 text-sm mt-2">Status: {currentStatus}</p>
+          )}
         </div>
 
         {/* Progress bar */}
