@@ -29,7 +29,7 @@ class DomainExpertAgent:
         Returns:
             Dictionary containing metrics, summary, and analysis
         """
-        paper_id = paper_data.get("arxiv_id", "unknown")
+        paper_id = paper_data.get("openalex_id", "unknown")
 
         with tracer.trace("llm.analyze_paper", service="hackmit-domain-expert"):
             tracer.current_span().set_tag("paper_id", paper_id)
@@ -60,7 +60,7 @@ class DomainExpertAgent:
         time.sleep(0.3)
 
         # Mock metrics extraction
-        paper_id = paper_data.get("arxiv_id", "unknown")
+        paper_id = paper_data.get("openalex_id", "unknown")
         mock_metrics = {
             "accuracy": f"92.{hash(paper_id) % 100:02d}%",
             "rmse": f"0.{hash(paper_id) % 1000:03d}",
@@ -84,7 +84,7 @@ class DomainExpertAgent:
         time.sleep(0.2)
 
         # Mock benchmark identification
-        paper_id = paper_data.get("arxiv_id", "unknown")
+        paper_id = paper_data.get("openalex_id", "unknown")
         benchmark_types = ["ImageNet", "CIFAR-10", "MNIST", "COCO", "Penn Treebank"]
         num_benchmarks = (hash(paper_id) % 3) + 1
 
