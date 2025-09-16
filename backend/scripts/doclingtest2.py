@@ -67,6 +67,7 @@ class DoclingBatchConverter:
 
 ray.init(
     #local_mode=True,
+    address="auto",
     ignore_reinit_error=True,
     runtime_env={
         #"uris": ["s3://your-bucket/data_item.zip"],

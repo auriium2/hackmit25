@@ -51,7 +51,7 @@ def neighbors_for_ids(base_prefix: str, shard_col: str, key_col: str, nbr_col: s
     return ds.select_columns([key_col, nbr_col]).to_pandas().itertuples(index=False, name=None)
 
 def run_bi_bfs(seeds: list[str]):
-    ray.init(address="auto")  # or ray.init(address="auto") on a cluster
+    ray.init()  # or ray.init(address="auto") on a cluster
 
     parents: dict[str, tuple[str | None, str, str]] = {} # node -> (parent, origin_seed, dir)
     visited: dict[str, str] = {}                         # node -> origin_seed
